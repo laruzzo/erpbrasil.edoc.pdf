@@ -2,12 +2,25 @@
 import os
 import re
 import tempfile
+import shutil
 
-import sh
+#adicionar no requirements.txt
+#pip install libreoffice
+
+try:
+    #linux
+    import sh
+except:
+    #windows
+    import subprocess
+
+import json
+
+
 from lxml import objectify
 from py3o.template import Template
-
 from erpbrasil.edoc.pdf import parser
+
 
 # cte_namespace = lookup.get_namespace('http://www.portalfiscal.inf.br/cte')
 
@@ -66,7 +79,7 @@ class ImprimirXml(object):
         tipo = self.TIPOS_DOCUMENTOS[tipo.lower()]
 
         return tipo
-
+    
     def _renderiza_documento(self):
         '''
         Renderiza o documento e salva o pdf do tipo de documento especificado
@@ -77,26 +90,43 @@ class ImprimirXml(object):
         script_dir = os.path.dirname(__file__)
         template_path = os.path.join(script_dir, self.tipo_impressao + '.odt')
         template = open(template_path, 'rb')
-        arq_template = tempfile.NamedTemporaryFile()
+        arq_template = tempfile.NamedTemporaryFile(delete=False)
         arq_template.write(template.read())
         arq_template.seek(os.SEEK_SET)
         template.close()
-
-        arq_odt = tempfile.NamedTemporaryFile(suffix=".odt")
-
-        t = Template(arq_template.name, arq_odt.name)
+        
+        #usar delete = false para evitar problema de arquivo em uso no windows
+        arq_odt = tempfile.NamedTemporaryFile(suffix=".odt",delete=False)
+        
+        t = Template(arq_template.name, arq_odt.name, 'rb')
         t.render({'danfe': self})
+    
+        #copia arquivo e cria um novo arquivo para evitar problema de arquivo em uso no windows
+        shutil.copyfile(arq_odt.name, arq_odt.name[:-4] + '2.odt')
 
-        lo = sh.libreoffice('--headless', '--invisible', '--convert-to',
+        try:
+           #linux
+            lo = sh.libreoffice('--headless', '--invisible', '--convert-to',
                             'pdf', '--outdir', tempfile.gettempdir(),
-                            arq_odt.name, _bg=True)
-        lo.wait()
+                            arq_odt2.name, _bg=True)
+            lo.wait()
+            
 
-        arq_pdf = arq_odt.name[:-3] + 'pdf'
+        except:
+            #windows
+            arq_odt2 = arq_odt.name[:-4] + '2.odt'
+            subprocess.call(['c:\\program files\\libreoffice\\program\\soffice', '--convert-to', 'pdf', 
+                          arq_odt2, '--outdir', tempfile.gettempdir()],shell=True)
+        
+
+        arq_pdf = arq_odt.name[:-4] + '2' + '.pdf'
+        arq_pdf = arq_odt.name[:-4] + '2' + '.pdf'
         self.pdf = open(arq_pdf, 'rb').read()
-
+            
         arq_template.close()
-        arq_odt.close()
+        arq_odt.close()     
+            
+   
 
     def _salva_pdf(self, output_dir):
 
@@ -151,3 +181,4 @@ class ImprimirXml(object):
             return obj._salva_pdf(output_dir)
 
         return obj.pdf
+
